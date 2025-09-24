@@ -44,10 +44,17 @@ func (s *Instance) Create(ctx echo.Context) error {
 	request.ID = request.InstanceName
 	if request.Instance == nil {
 		request.Instance = &models.Instance{
-			ID: request.InstanceName,
+			ID:               request.InstanceName,
+			AutoReadMessages: true, // Ativar confirmações por padrão
+			ReadDelay:        8,    // Delay padrão de 8 segundos
 		}
 	} else {
 		request.Instance.ID = request.InstanceName
+		// Se não especificado, ativar confirmações por padrão
+		if !request.Instance.AutoReadMessages && request.Instance.ReadDelay == 0 {
+			request.Instance.AutoReadMessages = true
+			request.Instance.ReadDelay = 8
+		}
 	}
 	request.RemoteJID = ""
 
@@ -115,9 +122,17 @@ func (s *Instance) List(ctx echo.Context) error {
 			zap.L().Error("failed to parse jid", zap.Error(err))
 		}
 
+		// Buscar status da instância
+		status, err := s.whatsmiau.Status(instance.ID)
+		if err != nil {
+			zap.L().Error("failed to get status for instance", zap.Error(err), zap.String("instance", instance.ID))
+			status = "closed" // Status padrão se não conseguir obter
+		}
+
 		response = append(response, dto.ListInstancesResponse{
 			Instance: &instance,
 			OwnerJID: jid.ToNonAD().String(),
+			Status:   string(status),
 		})
 	}
 
@@ -188,9 +203,16 @@ func (s *Instance) Status(ctx echo.Context) error {
 		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to get status instance")
 	}
 
+	// Buscar remoteJid se a instância estiver conectada
+	var remoteJID string
+	if string(status) == "open" && len(result) > 0 {
+		remoteJID = result[0].RemoteJID
+	}
+
 	return ctx.JSON(http.StatusOK, dto.StatusInstanceResponse{
-		ID:     request.ID,
-		Status: string(status),
+		ID:        request.ID,
+		Status:    string(status),
+		RemoteJID: remoteJID,
 		Instance: &dto.StatusInstanceResponseEvolutionCompatibility{
 			InstanceName: request.ID,
 			State:        string(status),
@@ -261,4 +283,99 @@ func (s *Instance) Delete(ctx echo.Context) error {
 	return ctx.JSON(http.StatusOK, dto.DeleteInstanceResponse{
 		Message: "instance deleted",
 	})
+}
+
+func (s *Instance) UpdateReadSettings(ctx echo.Context) error {
+	var request dto.UpdateReadSettingsRequest
+	if err := ctx.Bind(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusUnprocessableEntity, err, "failed to bind request body")
+	}
+
+	if err := validator.New().Struct(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request body")
+	}
+
+	c := ctx.Request().Context()
+	instance, err := s.repo.Update(c, request.ID, &models.Instance{
+		ID:               request.ID,
+		AutoReadMessages: request.AutoReadMessages,
+		ReadDelay:        request.ReadDelay,
+	})
+	if err != nil {
+		if errors.Is(err, instances.ErrorNotFound) {
+			return utils.HTTPFail(ctx, http.StatusNotFound, err, "instance not found")
+		}
+		zap.L().Error("failed to update read settings", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to update read settings")
+	}
+
+	return ctx.JSON(http.StatusOK, dto.UpdateReadSettingsResponse{
+		Instance: instance,
+	})
+}
+
+// StartPairing inicia o processo de pairing para uma instância
+func (s *Instance) StartPairing(ctx echo.Context) error {
+	c := ctx.Request().Context()
+	var request dto.StartPairingRequest
+	if err := ctx.Bind(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusUnprocessableEntity, err, "failed to bind request body")
+	}
+
+	if err := validator.New().Struct(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request body")
+	}
+
+	// Verificar se a instância existe
+	result, err := s.repo.List(c, request.ID)
+	if err != nil {
+		zap.L().Error("failed to list instances", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
+	}
+
+	if len(result) == 0 {
+		return utils.HTTPFail(ctx, http.StatusNotFound, err, "instance not found")
+	}
+
+	// Iniciar pairing
+	response, err := s.whatsmiau.StartPairing(c, request.ID, request.PhoneNumber, request.ClientType, request.ClientName)
+	if err != nil {
+		zap.L().Error("failed to start pairing", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to start pairing")
+	}
+
+	return ctx.JSON(http.StatusOK, response)
+}
+
+// GetPairingStatus retorna o status atual do pairing
+func (s *Instance) GetPairingStatus(ctx echo.Context) error {
+	c := ctx.Request().Context()
+	var request dto.PairingStatusRequest
+	if err := ctx.Bind(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusUnprocessableEntity, err, "failed to bind request body")
+	}
+
+	if err := validator.New().Struct(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request body")
+	}
+
+	// Verificar se a instância existe
+	result, err := s.repo.List(c, request.ID)
+	if err != nil {
+		zap.L().Error("failed to list instances", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to list instances")
+	}
+
+	if len(result) == 0 {
+		return utils.HTTPFail(ctx, http.StatusNotFound, err, "instance not found")
+	}
+
+	// Obter status do pairing
+	response, err := s.whatsmiau.GetPairingStatus(c, request.ID, request.SessionID)
+	if err != nil {
+		zap.L().Error("failed to get pairing status", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to get pairing status")
+	}
+
+	return ctx.JSON(http.StatusOK, response)
 }

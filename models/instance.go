@@ -12,6 +12,8 @@ type Instance struct {
 	SyncRecentHistory bool            `json:"syncRecentHistory,omitempty"`
 	RemoteJID         string          `json:"remoteJID,omitempty"`
 	Webhook           InstanceWebhook `json:"webhook,omitempty"`
+	AutoReadMessages  bool            `json:"autoReadMessages,omitempty"`
+	ReadDelay         int             `json:"readDelay,omitempty"`
 }
 
 type InstanceWebhook struct {

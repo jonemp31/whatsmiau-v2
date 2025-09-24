@@ -8,6 +8,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -74,6 +75,7 @@ type SendAudio struct {
 	QuoteMessageID string     `json:"quote_message_id"`
 	QuoteMessage   string     `json:"quote_message"`
 	Participant    *types.JID `json:"participant"`
+	ViewOnce       bool       `json:"view_once"`
 }
 
 type SendAudioResponse struct {
@@ -118,6 +120,7 @@ func (s *Whatsmiau) SendAudio(ctx context.Context, data *SendAudio) (*SendAudioR
 		FileEncSHA256: uploaded.FileEncSHA256,
 		DirectPath:    proto.String(uploaded.DirectPath),
 		Waveform:      waveForm,
+		ViewOnce:      proto.Bool(data.ViewOnce),
 	}
 
 	res, err := client.SendMessage(ctx, *data.RemoteJID, &waE2E.Message{
@@ -199,6 +202,7 @@ type SendImageRequest struct {
 	Caption    string     `json:"caption"`
 	RemoteJID  *types.JID `json:"remote_jid"`
 	Mimetype   string     `json:"mimetype"`
+	ViewOnce   bool       `json:"view_once"`
 }
 
 type SendImageResponse struct {
@@ -240,6 +244,7 @@ func (s *Whatsmiau) SendImage(ctx context.Context, data *SendImageRequest) (*Sen
 		MediaKey:      uploaded.MediaKey,
 		FileEncSHA256: uploaded.FileEncSHA256,
 		DirectPath:    proto.String(uploaded.DirectPath),
+		ViewOnce:      proto.Bool(data.ViewOnce),
 	}
 
 	res, err := client.SendMessage(ctx, *data.RemoteJID, &waE2E.Message{
@@ -250,6 +255,73 @@ func (s *Whatsmiau) SendImage(ctx context.Context, data *SendImageRequest) (*Sen
 	}
 
 	return &SendImageResponse{
+		ID:        res.ID,
+		CreatedAt: res.Timestamp,
+	}, nil
+}
+
+type SendVideoRequest struct {
+	InstanceID string     `json:"instance_id"`
+	MediaURL   string     `json:"media_url"`
+	Caption    string     `json:"caption"`
+	RemoteJID  *types.JID `json:"remote_jid"`
+	Mimetype   string     `json:"mimetype"`
+	ViewOnce   bool       `json:"view_once"`
+}
+
+type SendVideoResponse struct {
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (s *Whatsmiau) SendVideo(ctx context.Context, data *SendVideoRequest) (*SendVideoResponse, error) {
+	client, ok := s.clients.Load(data.InstanceID)
+	if !ok {
+		return nil, whatsmeow.ErrClientIsNil
+	}
+
+	resMedia, err := s.getCtx(ctx, data.MediaURL)
+	if err != nil {
+		return nil, err
+	}
+
+	dataBytes, err := io.ReadAll(resMedia.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	uploaded, err := client.Upload(ctx, dataBytes, whatsmeow.MediaVideo)
+	if err != nil {
+		return nil, err
+	}
+
+	if data.Mimetype == "" {
+		data.Mimetype, err = extractMimetype(dataBytes, uploaded.URL)
+		if err != nil {
+			zap.L().Warn("failed to extract mimetype for video", zap.Error(err))
+		}
+	}
+
+	video := waE2E.VideoMessage{
+		URL:           proto.String(uploaded.URL),
+		Mimetype:      proto.String(data.Mimetype),
+		Caption:       proto.String(data.Caption),
+		FileSHA256:    uploaded.FileSHA256,
+		FileLength:    proto.Uint64(uploaded.FileLength),
+		MediaKey:      uploaded.MediaKey,
+		FileEncSHA256: uploaded.FileEncSHA256,
+		DirectPath:    proto.String(uploaded.DirectPath),
+		ViewOnce:      proto.Bool(data.ViewOnce),
+	}
+
+	res, err := client.SendMessage(ctx, *data.RemoteJID, &waE2E.Message{
+		VideoMessage: &video,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &SendVideoResponse{
 		ID:        res.ID,
 		CreatedAt: res.Timestamp,
 	}, nil

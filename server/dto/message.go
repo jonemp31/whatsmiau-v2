@@ -60,6 +60,7 @@ type SendAudioRequest struct {
 	InstanceID       string                `param:"instance"`
 	Number           string                `json:"number,omitempty"`
 	Audio            string                `json:"audio,omitempty"`
+	ViewOnce         bool                  `json:"viewOnce,omitempty"`
 	Delay            int                   `json:"delay,omitempty" validate:"omitempty,min=0,max=300000"`
 	Quoted           *MessageRequestQuoted `json:"quoted,omitempty"`
 	MentionsEveryOne bool                  `json:"mentionsEveryOne,omitempty"`
@@ -134,6 +135,7 @@ type SendDocumentRequest struct {
 	// Media is the URL of the file
 	Media            string                `json:"media,omitempty"`
 	FileName         string                `json:"fileName,omitempty"`
+	ViewOnce         bool                  `json:"viewOnce,omitempty"`
 	Delay            int                   `json:"delay,omitempty" validate:"omitempty,min=0,max=300000"`
 	Quoted           *MessageRequestQuoted `json:"quoted,omitempty"`
 	MentionsEveryOne bool                  `json:"mentionsEveryOne,omitempty"`

@@ -7,6 +7,7 @@ import (
 
 func Load(app *echo.Echo) {
 	app.Pre(middleware.Simplify(middleware.Auth))
+	app.Use(middleware.LoggingMiddleware())
 
 	V1(app.Group("/v1"))
 }
@@ -15,6 +16,7 @@ func V1(group *echo.Group) {
 	Instance(group.Group("/instance"))
 	Message(group.Group("/instance/:instance/message"))
 	Chat(group.Group("/instance/:instance/chat"))
+	Status(group.Group("/instance/:instance/status"))
 
 	ChatEVO(group.Group("/chat"))
 	MessageEVO(group.Group("/message"))

@@ -32,6 +32,7 @@ type ListInstancesResponse struct {
 	*models.Instance
 
 	OwnerJID string `json:"ownerJid,omitempty"`
+	Status   string `json:"status,omitempty"`
 }
 
 type ConnectInstanceRequest struct {
@@ -50,9 +51,10 @@ type StatusInstanceRequest struct {
 }
 
 type StatusInstanceResponse struct {
-	ID       string                                        `json:"id,omitempty"`
-	Status   string                                        `json:"state,omitempty"`
-	Instance *StatusInstanceResponseEvolutionCompatibility `json:"instance,omitempty"`
+	ID        string                                        `json:"id,omitempty"`
+	Status    string                                        `json:"state,omitempty"`
+	RemoteJID string                                        `json:"remoteJid,omitempty"`
+	Instance  *StatusInstanceResponseEvolutionCompatibility `json:"instance,omitempty"`
 }
 
 type StatusInstanceResponseEvolutionCompatibility struct {
@@ -74,4 +76,42 @@ type LogoutInstanceRequest struct {
 
 type LogoutInstanceResponse struct {
 	Message string `json:"message,omitempty"`
+}
+
+// Pairing Code DTOs
+type StartPairingRequest struct {
+	ID          string `param:"id" validate:"required"`
+	PhoneNumber string `json:"phoneNumber" validate:"required"`
+	ClientType  string `json:"clientType,omitempty"` // "chrome", "firefox", "safari", "edge"
+	ClientName  string `json:"clientName,omitempty"` // "Chrome (Windows)", "Safari (iOS)"
+}
+
+type StartPairingResponse struct {
+	Success     bool   `json:"success"`
+	PairingCode string `json:"pairingCode,omitempty"` // XXXX-XXXX
+	Message     string `json:"message"`
+	SessionID   string `json:"sessionId,omitempty"`
+	ExpiresAt   int64  `json:"expiresAt,omitempty"`
+}
+
+type PairingStatusRequest struct {
+	ID        string `param:"id" validate:"required"`
+	SessionID string `query:"sessionId" validate:"required"`
+}
+
+type PairingStatusResponse struct {
+	Status    string `json:"status"` // "pending", "success", "failed", "expired"
+	Message   string `json:"message"`
+	SessionID string `json:"sessionId,omitempty"`
+	ExpiresAt int64  `json:"expiresAt,omitempty"`
+}
+
+type UpdateReadSettingsRequest struct {
+	ID               string `json:"id" param:"id" validate:"required"`
+	AutoReadMessages bool   `json:"autoReadMessages"`
+	ReadDelay        int    `json:"readDelay" validate:"min=0,max=300"` // 0-5 minutos
+}
+
+type UpdateReadSettingsResponse struct {
+	*models.Instance
 }

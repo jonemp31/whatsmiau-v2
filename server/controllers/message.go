@@ -61,7 +61,12 @@ func (s *Message) SendText(ctx echo.Context) error {
 	}); err != nil {
 		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
 	} else {
-		time.Sleep(time.Millisecond * time.Duration(request.Delay)) // TODO: create a more robust solution
+		// Delay padrão de 6 segundos para texto
+		delay := request.Delay
+		if delay == 0 {
+			delay = 6000 // 6 segundos em millisegundos
+		}
+		time.Sleep(time.Millisecond * time.Duration(delay))
 	}
 
 	res, err := s.whatsmiau.SendText(c, sendText)
@@ -106,6 +111,7 @@ func (s *Message) SendAudio(ctx echo.Context) error {
 		AudioURL:   request.Audio,
 		InstanceID: request.InstanceID,
 		RemoteJID:  jid,
+		ViewOnce:   request.ViewOnce,
 	}
 
 	if request.Quoted != nil && len(request.Quoted.Key.Id) > 0 && len(request.Quoted.Message.Conversation) > 0 {
@@ -122,7 +128,12 @@ func (s *Message) SendAudio(ctx echo.Context) error {
 	}); err != nil {
 		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
 	} else {
-		time.Sleep(time.Millisecond * time.Duration(request.Delay)) // TODO: create a more robust solution
+		// Delay padrão de 12 segundos para áudio
+		delay := request.Delay
+		if delay == 0 {
+			delay = 12000 // 12 segundos em millisegundos
+		}
+		time.Sleep(time.Millisecond * time.Duration(delay))
 	}
 
 	res, err := s.whatsmiau.SendAudio(c, sendText)
@@ -159,6 +170,8 @@ func (s *Message) SendMedia(ctx echo.Context) error {
 	case "image":
 		request.SendDocumentRequest.Mimetype = "image/png"
 		return s.sendImage(ctx, request.SendDocumentRequest)
+	case "video":
+		return s.sendVideo(ctx, request.SendDocumentRequest)
 	}
 
 	return s.sendDocument(ctx, request.SendDocumentRequest)
@@ -241,10 +254,25 @@ func (s *Message) sendImage(ctx echo.Context, request dto.SendDocumentRequest) e
 		Caption:    request.Caption,
 		RemoteJID:  jid,
 		Mimetype:   request.Mimetype,
+		ViewOnce:   request.ViewOnce,
 	}
 
 	c := ctx.Request().Context()
-	time.Sleep(time.Millisecond * time.Duration(request.Delay)) // TODO: create a more robust solution
+	if err := s.whatsmiau.ChatPresence(&whatsmiau.ChatPresenceRequest{
+		InstanceID: request.InstanceID,
+		RemoteJID:  jid,
+		Presence:   types.ChatPresenceComposing,
+		Media:      types.ChatPresenceMediaText,
+	}); err != nil {
+		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
+	} else {
+		// Delay padrão de 2 segundos para imagem
+		delay := request.Delay
+		if delay == 0 {
+			delay = 2000 // 2 segundos em millisegundos
+		}
+		time.Sleep(time.Millisecond * time.Duration(delay))
+	}
 
 	res, err := s.whatsmiau.SendImage(c, sendData)
 	if err != nil {
@@ -260,6 +288,71 @@ func (s *Message) sendImage(ctx echo.Context, request dto.SendDocumentRequest) e
 		},
 		Status:           "sent",
 		MessageType:      "imageMessage",
+		MessageTimestamp: int(res.CreatedAt.Unix() / 1000),
+		InstanceId:       request.InstanceID,
+	})
+}
+
+func (s *Message) SendVideo(ctx echo.Context) error {
+	var request dto.SendDocumentRequest
+	if err := ctx.Bind(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusUnprocessableEntity, err, "failed to bind request body")
+	}
+
+	if err := validator.New().Struct(&request); err != nil {
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid request body")
+	}
+
+	return s.sendVideo(ctx, request)
+}
+
+func (s *Message) sendVideo(ctx echo.Context, request dto.SendDocumentRequest) error {
+	jid, err := numberToJid(request.Number)
+	if err != nil {
+		zap.L().Error("error converting number to jid", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusBadRequest, err, "invalid number format")
+	}
+
+	sendData := &whatsmiau.SendVideoRequest{
+		InstanceID: request.InstanceID,
+		MediaURL:   request.Media,
+		Caption:    request.Caption,
+		RemoteJID:  jid,
+		Mimetype:   request.Mimetype,
+		ViewOnce:   request.ViewOnce,
+	}
+
+	c := ctx.Request().Context()
+	if err := s.whatsmiau.ChatPresence(&whatsmiau.ChatPresenceRequest{
+		InstanceID: request.InstanceID,
+		RemoteJID:  jid,
+		Presence:   types.ChatPresenceComposing,
+		Media:      types.ChatPresenceMediaText,
+	}); err != nil {
+		zap.L().Error("Whatsmiau.ChatPresence", zap.Error(err))
+	} else {
+		// Delay padrão de 2 segundos para vídeo
+		delay := request.Delay
+		if delay == 0 {
+			delay = 2000 // 2 segundos em millisegundos
+		}
+		time.Sleep(time.Millisecond * time.Duration(delay))
+	}
+
+	res, err := s.whatsmiau.SendVideo(c, sendData)
+	if err != nil {
+		zap.L().Error("Whatsmiau.SendVideo failed", zap.Error(err))
+		return utils.HTTPFail(ctx, http.StatusInternalServerError, err, "failed to send video")
+	}
+
+	return ctx.JSON(http.StatusOK, dto.SendDocumentResponse{
+		Key: dto.MessageResponseKey{
+			RemoteJid: request.Number,
+			FromMe:    true,
+			Id:        res.ID,
+		},
+		Status:           "sent",
+		MessageType:      "videoMessage",
 		MessageTimestamp: int(res.CreatedAt.Unix() / 1000),
 		InstanceId:       request.InstanceID,
 	})

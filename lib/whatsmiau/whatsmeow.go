@@ -29,6 +29,8 @@ type Whatsmiau struct {
 	qrCache          *xsync.Map[string, string]
 	observerRunning  *xsync.Map[string, bool]
 	instanceCache    *xsync.Map[string, models.Instance]
+	pairingCache     *xsync.Map[string, PairingSession]
+	pairingObserver  *xsync.Map[string, bool]
 	emitter          chan emitter
 	httpClient       *http.Client
 	fileStorage      interfaces.Storage
@@ -111,6 +113,8 @@ func LoadMiau(ctx context.Context, container *sqlstore.Container) {
 		qrCache:         xsync.NewMap[string, string](),
 		instanceCache:   xsync.NewMap[string, models.Instance](),
 		observerRunning: xsync.NewMap[string, bool](),
+		pairingCache:    xsync.NewMap[string, PairingSession](),
+		pairingObserver: xsync.NewMap[string, bool](),
 		emitter:         make(chan emitter, env.Env.EmitterBufferSize),
 		httpClient: &http.Client{
 			Timeout: time.Second * 30, // TODO: load from env
@@ -320,4 +324,44 @@ func (s *Whatsmiau) extractJidLid(ctx context.Context, id string, jid types.JID)
 	}
 
 	return jid.ToNonAD().String(), ""
+}
+
+// SendDeliveryReceipt envia confirmação de recebimento (✓✓)
+func (s *Whatsmiau) SendDeliveryReceipt(instanceID string, chatJID types.JID, messageID string) error {
+	client, ok := s.clients.Load(instanceID)
+	if !ok {
+		return whatsmeow.ErrClientIsNil
+	}
+
+	// Enviar confirmação de entrega usando MarkRead
+	err := client.MarkRead([]string{messageID}, time.Now(), chatJID, types.EmptyJID)
+
+	if err != nil {
+		zap.L().Error("failed to send delivery receipt",
+			zap.String("instance", instanceID),
+			zap.String("messageID", messageID),
+			zap.Error(err))
+	}
+
+	return err
+}
+
+// SendReadReceipt envia confirmação de visualização (✓✓ azul)
+func (s *Whatsmiau) SendReadReceipt(instanceID string, chatJID types.JID, messageID string) error {
+	client, ok := s.clients.Load(instanceID)
+	if !ok {
+		return whatsmeow.ErrClientIsNil
+	}
+
+	// Enviar confirmação de leitura usando MarkRead
+	err := client.MarkRead([]string{messageID}, time.Now(), chatJID, types.EmptyJID)
+
+	if err != nil {
+		zap.L().Error("failed to send read receipt",
+			zap.String("instance", instanceID),
+			zap.String("messageID", messageID),
+			zap.Error(err))
+	}
+
+	return err
 }

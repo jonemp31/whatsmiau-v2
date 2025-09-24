@@ -142,6 +142,22 @@ func (s *Whatsmiau) handleMessageEvent(id string, instance *models.Instance, e *
 		return
 	}
 
+	// NOVO: Enviar confirmações automáticas para mensagens recebidas
+	if !e.Info.IsFromMe && instance.AutoReadMessages {
+		// Enviar confirmação de recebimento imediatamente (✓✓)
+		go s.SendDeliveryReceipt(id, e.Info.Chat, e.Info.ID)
+
+		// Enviar confirmação de visualização com delay (✓✓ azul)
+		go func() {
+			delay := time.Duration(instance.ReadDelay) * time.Second
+			if delay == 0 {
+				delay = 8 * time.Second // Delay padrão de 8 segundos
+			}
+			time.Sleep(delay)
+			s.SendReadReceipt(id, e.Info.Chat, e.Info.ID)
+		}()
+	}
+
 	messageData := s.convertEventMessage(id, instance, e)
 	if messageData == nil {
 		zap.L().Error("failed to convert event", zap.String("id", id), zap.String("type", fmt.Sprintf("%T", e)), zap.Any("raw", e))

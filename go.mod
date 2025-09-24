@@ -21,6 +21,7 @@ require (
 	golang.org/x/oauth2 v0.30.0
 	google.golang.org/api v0.243.0
 	google.golang.org/protobuf v1.36.9
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

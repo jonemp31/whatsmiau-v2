@@ -7,7 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/verbeux-ai/whatsmiau/env"
-	log_connect "github.com/verbeux-ai/whatsmiau/lib/log-connect"
+	"github.com/verbeux-ai/whatsmiau/lib/logger"
 	"github.com/verbeux-ai/whatsmiau/lib/whatsmiau"
 	"github.com/verbeux-ai/whatsmiau/server/routes"
 	"github.com/verbeux-ai/whatsmiau/services"
@@ -21,7 +21,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := log_connect.StartLogger(); err != nil {
+	if err := logger.StartLogger(); err != nil {
 		log.Fatalln(err)
 	}
 
